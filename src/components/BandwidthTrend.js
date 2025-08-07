@@ -1,12 +1,128 @@
-import React from 'react';
-// import { Line } from 'react-chartjs-2'; // Example
+import React, { useEffect, useRef, useState } from 'react';
+import Chart from 'chart.js/auto';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase'; // Adjust this import path if needed
 
-function BandwidthTrend({ employee }) {
-  // Fetch data for employee and timeframe
+function BandwidthTrend({ employee, timeframe }) {
+  const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
+  const [chartData, setChartData] = useState({ labels: [], data: [] });
+
+
+
+  // Helper to group logs by week
+  function groupLogsByWeek(logs) {
+    const grouped = {};
+    logs.forEach(log => {
+      const date = new Date(log.dateStr); // log.dateStr = yyyy-mm-dd
+      const day = date.getDay();
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+      const weekStart = new Date(date.setDate(diff));
+      const weekStr = weekStart.toISOString().slice(0, 10);
+      if (!grouped[weekStr]) grouped[weekStr] = [];
+      grouped[weekStr].push(log.bandwidth ?? 0);
+    });
+    return grouped;
+  }
+
+  useEffect(() => {
+    async function fetchData() {
+      if (!employee || !employee.trello_id) return;
+
+      const logsQuery = query(
+        collection(db, 'work_logs'),
+        where('user_id', '==', employee.trello_id)
+      );
+      const querySnapshot = await getDocs(logsQuery);
+
+      // Collect logs with dateStr
+      const logs = [];
+      querySnapshot.forEach((doc) => {
+        const log = doc.data();
+        let timestamp = log.timestamp;
+        let dateStr = '';
+        if (timestamp) {
+          const seconds = timestamp._seconds ?? timestamp.seconds;
+          dateStr = new Date(seconds * 1000).toISOString().slice(0, 10);
+        } else {
+          dateStr = "Unknown";
+        }
+        logs.push({ ...log, dateStr });
+      });
+
+      let groupedLogs = {};
+      let labels = [];
+      let avgBandwidth = [];
+      const N = 7;
+
+      if (timeframe === 'Weekly') {
+        groupedLogs = groupLogsByWeek(logs);
+        labels = Object.keys(groupedLogs).sort().slice(-N);
+        avgBandwidth = labels.map(week => {
+          const arr = groupedLogs[week];
+          return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        });
+      } else {
+        // Daily
+        groupedLogs = {};
+        logs.forEach(log => {
+          if (!groupedLogs[log.dateStr]) groupedLogs[log.dateStr] = [];
+          groupedLogs[log.dateStr].push(log.bandwidth ?? 0);
+        });
+        labels = Object.keys(groupedLogs).sort().slice(-N);
+        avgBandwidth = labels.map(date => {
+          const arr = groupedLogs[date];
+          return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        });
+      }
+
+      setChartData({ labels, data: avgBandwidth });
+    }
+    fetchData();
+  }, [employee, timeframe]);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    const ctx = chartRef.current.getContext('2d');
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+    }
+    chartInstanceRef.current = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: chartData.labels,
+        datasets: [
+          {
+            label: 'Bandwidth',
+            data: chartData.data,
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true },
+          title: { display: true, text: 'Bandwidth Trend' },
+        },
+        scales: {
+          x: { type: 'category', title: { display: true, text: 'Date' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Bandwidth' } },
+        },
+      },
+    });
+
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+      }
+    };
+  }, [chartData]);
+
   return (
-    <div>
-      <h4>Bandwidth Trend</h4>
-      {/* Chart component here */}
+    <div style={{ width: '500px', height: '300px', margin: '0 auto' }}>
+      <canvas ref={chartRef} />
     </div>
   );
 }
