@@ -1,23 +1,30 @@
-import logo from './logo.svg';
+import React, { useState, useEffect } from 'react';
+import Sidebar from './components/Sidebar';
+import ProfilePanel from './components/ProfilePanel';
+import LeaderboardTab from './components/LeaderboardTab';
 import './App.css';
 
 function App() {
+  const [selectedTab, setSelectedTab] = useState('Employee Profile');
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+
+  // Fetch employees from Firestore (use your firebase.js here)
+  // You can use useEffect to fetch and set data
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="dashboard-container">
+      <div className="tabs">
+        <button onClick={() => setSelectedTab('Employee Profile')}>Employee Profile</button>
+        <button onClick={() => setSelectedTab('Leaderboard')}>Leaderboard</button>
+      </div>
+      <div className="main-panel">
+        <Sidebar onEmployeeSelect={setSelectedEmployee} />
+        {selectedTab === 'Employee Profile' ? (
+          <ProfilePanel employee={selectedEmployee} />
+        ) : (
+          <LeaderboardTab />
+        )}
+      </div>
     </div>
   );
 }
